@@ -14,47 +14,47 @@ def accuracy(y, output):
     return (y_index == output_index).float().mean().item()
 
 
+def plot_feature_maps(model, image):
+    layers = ["conv1", "layer1", "layer2", "layer3"]
+
+    for layer in layers:
+        feature_map = get_feature_maps(model, "layer1", image)
+        print(f"feature map size: {feature_map.shape}")
+        visualize_feature_maps(feature_map, title=layer, num_maps=10)
+
+
 def train(
-    model, train_loader, val_loader, optimizer, criterion, device, epochs=30, log=True
+    model,
+    train_loader,
+    val_loader,
+    optimizer,
+    criterions,
+    device,
+    image=None,
+    epochs=30,
+    log=True,
 ):
     train_losses = []
-
     train_accuracies = []
-
     validation_losses = []
-
     validation_accuracies = []
 
     for epoch in range(epochs):
         batch_loss = 0
-
         train_acc = 0
-
         val_acc = 0
 
         model.train()
 
         for X_train, y_train in train_loader:
             X_train, y_train = X_train.to(device), y_train.to(device)
-            # print(y_train.shape)
 
             y_pred = model(X_train)
-            # print(y_pred.shape)
-            # print(y_pred.requires_grad)  # Should be True
-
-            loss = criterion(y_pred, y_train)
-            # print(loss.requires_grad)  # Should be True
-            # for name, param in model.named_parameters():
-            #     print(f"{name}: {param.requires_grad}")  # Should all be True
-
+            loss = criterions(y_pred, y_train)
             optimizer.zero_grad()
-
             loss.backward()
-
             optimizer.step()
-
             batch_loss += loss.item() * y_train.shape[0]
-
             train_acc += accuracy(y_train, y_pred)
 
         train_losses.append(batch_loss / len(train_loader))
@@ -70,11 +70,8 @@ def train(
                 X_val, y_val = X_val.to(device), y_val.to(device)
 
                 y_pred = model(X_val)
-
-                loss = criterion(y_pred, y_val)
-
+                loss = criterions(y_pred, y_val)
                 batch_loss += loss.item() * y_val.shape[0]
-
                 val_acc += accuracy(y_val, y_pred)
 
         validation_losses.append(batch_loss / len(val_loader))
@@ -85,17 +82,121 @@ def train(
             print(
                 f"Epoch {epoch + 1}/{epochs}, Train loss: {np.round(train_losses[-1], 3)}, Train acc: {np.round(train_accuracies[-1], 3)}, Val loss: {np.round(validation_losses[-1], 3)}, Val acc: {np.round(validation_accuracies[-1], 3)}"
             )
+            if image:
+                plot_feature_maps(model, image)
+
+    return train_losses, train_accuracies, validation_losses, validation_accuracies
+
+
+def combined_train(
+    model,
+    train_loader,
+    val_loader,
+    optimizer,
+    criterion,
+    device,
+    image=None,
+    epochs=30,
+    log=True,
+    mode="default",
+):
+    train_losses = []
+    train_accuracies = []
+    validation_losses = []
+    validation_accuracies = []
+
+    for epoch in range(epochs):
+        batch_loss = 0
+        train_acc = 0
+        val_acc = 0
+
+        model.train()
+
+        for (anchor, positive, negative), label in train_loader:
+            anchor, positive, negative, label = (
+                anchor.to(device),
+                positive.to(device),
+                negative.to(device),
+                label.to(device),
+            )
+
+            anchor_embedding, anchor_class_scores = model(anchor)
+            positive_embedding, _ = model(positive)
+            negative_embedding, _ = model(negative)
+
+            if mode == "triplet":
+                loss = criterion(
+                    anchor_embedding, positive_embedding, negative_embedding
+                )
+            elif mode == "combined":
+                loss1 = criterion[0](anchor_class_scores)
+                loss2 = criterion[1](
+                    anchor_embedding, positive_embedding, negative_embedding
+                )
+                loss = loss1 + loss2
+            else:
+                loss = criterion(anchor_class_scores)
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            batch_loss += loss.item() * anchor.shape[0]
+            train_acc += accuracy(label, anchor_class_scores)
+
+        train_losses.append(batch_loss / len(train_loader))
+        train_accuracies.append(train_acc / len(train_loader))
+
+        model.eval()
+
+        with torch.no_grad():
+            batch_loss = 0
+
+            for (anchor, positive, negative), label in val_loader:
+                anchor, positive, negative, label = (
+                    anchor.to(device),
+                    positive.to(device),
+                    negative.to(device),
+                    label.to(device),
+                )
+
+                anchor_embedding, anchor_class_scores = model(anchor)
+                positive_embedding, _ = model(positive)
+                negative_embedding, _ = model(negative)
+
+                if mode == "triplet":
+                    loss = criterion(
+                        anchor_embedding, positive_embedding, negative_embedding
+                    )
+                elif mode == "combined":
+                    loss1 = criterion[0](anchor_class_scores)
+                    loss2 = criterion[1](
+                        anchor_embedding, positive_embedding, negative_embedding
+                    )
+                    loss = loss1 + loss2
+                else:
+                    loss = criterion(anchor_class_scores)
+
+                batch_loss += loss.item() * anchor.shape[0]
+                val_acc += accuracy(label, anchor_class_scores)
+
+        validation_losses.append(batch_loss / len(val_loader))
+        validation_accuracies.append(val_acc / len(val_loader))
+
+        if log and (epoch + 1) % 10 == 0:
+            print(
+                f"Epoch {epoch + 1}/{epochs}, Train loss: {np.round(train_losses[-1], 3)}, Val loss: {np.round(validation_losses[-1], 3)})"
+            )
+            if image:
+                plot_feature_maps(model, image)
 
     return train_losses, train_accuracies, validation_losses, validation_accuracies
 
 
 def test(model, test_loader, criterion, device):
     test_loss = 0
-
     test_accuracy = 0
-
     all_preds = []
-
     all_labels = []
 
     model.eval()
@@ -105,15 +206,10 @@ def test(model, test_loader, criterion, device):
             X_test, y_test = X_test.to(device), y_test.to(device)
 
             y_pred = model(X_test)
-
             loss = criterion(y_pred, y_test)
-
             test_loss += loss.item() * y_test.shape[0]
-
             test_accuracy += accuracy(y_test, y_pred)
-
             all_labels.extend(torch.argmax(y_test, dim=1).cpu().numpy())
-
             all_preds.extend(torch.argmax(y_pred, dim=1).cpu().numpy())
 
         test_loss /= len(test_loader)
@@ -192,12 +288,6 @@ def plot_confusion_matrix(all_labels, all_preds, class_names, title):
     plt.show()
 
 
-def save_model(model, path):
-    torch.save(model.state_dict(), path)
-
-    print(f"model saved to {path} successfully!")
-
-
 def get_feature_maps(model, layer_name, x):
     features = []
     x = x.unsqueeze(0)
@@ -266,3 +356,15 @@ def plot_images(images, labels, title, max_row=5):
     fig.suptitle(title)
     plt.tight_layout()
     plt.show()
+
+
+def save_model(model, path):
+    torch.save(model.state_dict(), path)
+
+    print(f"model saved to {path} successfully!")
+
+
+def load_model(model, path):
+    model.load_state_dict(torch.load(path, weights_only=True))
+
+    print(f"model loaded from {path} successfully!")
