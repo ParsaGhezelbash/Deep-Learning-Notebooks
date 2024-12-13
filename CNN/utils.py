@@ -7,7 +7,10 @@ from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
 
 def accuracy(y, output):
-    y_index = torch.argmax(y, dim=1)
+    if y.dim() != 1:
+        y_index = torch.argmax(y, dim=1)
+    else:
+        y_index = y
 
     output_index = torch.argmax(output, dim=1)
 
@@ -209,7 +212,10 @@ def test(model, test_loader, criterion, device):
             loss = criterion(y_pred, y_test)
             test_loss += loss.item() * y_test.shape[0]
             test_accuracy += accuracy(y_test, y_pred)
-            all_labels.extend(torch.argmax(y_test, dim=1).cpu().numpy())
+            if y_test.dim() != 1:
+                all_labels.extend(torch.argmax(y_test, dim=1).cpu().numpy())
+            else:
+                all_labels.extend(y_test.cpu().numpy())
             all_preds.extend(torch.argmax(y_pred, dim=1).cpu().numpy())
 
         test_loss /= len(test_loader)
@@ -237,7 +243,7 @@ def combined_test(model, test_loader, criterion, device, mode):
             anchor_embedding, anchor_class_scores = model(anchor)
             positive_embedding, _ = model(positive)
             negative_embedding, _ = model(negative)
-            
+
             if mode == "triplet":
                 loss = criterion(
                     anchor_embedding, positive_embedding, negative_embedding
@@ -377,7 +383,16 @@ def visualize_feature_maps(feature_map, title, num_maps=8, max_row=5):
     plt.show()
 
 
-def plot_images(images, labels, title, max_row=5):
+def denormalize_image(tensor, mean, std):
+    mean = torch.tensor(mean).view(3, 1, 1)
+    std = torch.tensor(std).view(3, 1, 1)
+    return tensor * std + mean
+
+
+def plot_images(images, mean, std, labels, title, max_row=5):
+    mean = torch.tensor(mean).view(3, 1, 1)
+    std = torch.tensor(std).view(3, 1, 1)
+
     r = max(1, np.ceil(len(images) / max_row).astype(int))
     c = min(max_row, len(images))
     fig, axes = plt.subplots(r, c, figsize=[c * 2, r * 3])
@@ -390,7 +405,7 @@ def plot_images(images, labels, title, max_row=5):
         axes = axes.reshape(-1, 1)
 
     for i in range(len(images)):
-        sample = images[i] * 0.5 + 0.5
+        sample = images[i] * std + mean
         sample = sample.numpy().transpose(1, 2, 0)
         ax = axes[int(i / c), i % c]
         ax.imshow(sample)
