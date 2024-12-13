@@ -14,11 +14,11 @@ def accuracy(y, output):
     return (y_index == output_index).float().mean().item()
 
 
-def plot_feature_maps(model, image):
+def plot_feature_maps(model, image, device):
     layers = ["conv1", "layer1", "layer2", "layer3"]
-
+    model.to(device)
     for layer in layers:
-        feature_map = get_feature_maps(model, "layer1", image)
+        feature_map = get_feature_maps(model, layer, image, device)
         print(f"feature map size: {feature_map.shape}")
         visualize_feature_maps(feature_map, title=layer, num_maps=10)
 
@@ -28,7 +28,7 @@ def train(
     train_loader,
     val_loader,
     optimizer,
-    criterions,
+    criterion,
     device,
     image=None,
     epochs=30,
@@ -50,7 +50,7 @@ def train(
             X_train, y_train = X_train.to(device), y_train.to(device)
 
             y_pred = model(X_train)
-            loss = criterions(y_pred, y_train)
+            loss = criterion(y_pred, y_train)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -70,7 +70,7 @@ def train(
                 X_val, y_val = X_val.to(device), y_val.to(device)
 
                 y_pred = model(X_val)
-                loss = criterions(y_pred, y_val)
+                loss = criterion(y_pred, y_val)
                 batch_loss += loss.item() * y_val.shape[0]
                 val_acc += accuracy(y_val, y_pred)
 
@@ -129,13 +129,13 @@ def combined_train(
                     anchor_embedding, positive_embedding, negative_embedding
                 )
             elif mode == "combined":
-                loss1 = criterion[0](anchor_class_scores)
+                loss1 = criterion[0](anchor_class_scores, label)
                 loss2 = criterion[1](
                     anchor_embedding, positive_embedding, negative_embedding
                 )
                 loss = loss1 + loss2
             else:
-                loss = criterion(anchor_class_scores)
+                loss = criterion(anchor_class_scores, label)
 
             optimizer.zero_grad()
             loss.backward()
@@ -169,13 +169,13 @@ def combined_train(
                         anchor_embedding, positive_embedding, negative_embedding
                     )
                 elif mode == "combined":
-                    loss1 = criterion[0](anchor_class_scores)
+                    loss1 = criterion[0](anchor_class_scores, label)
                     loss2 = criterion[1](
                         anchor_embedding, positive_embedding, negative_embedding
                     )
                     loss = loss1 + loss2
                 else:
-                    loss = criterion(anchor_class_scores)
+                    loss = criterion(anchor_class_scores, label)
 
                 batch_loss += loss.item() * anchor.shape[0]
                 val_acc += accuracy(label, anchor_class_scores)
@@ -185,7 +185,7 @@ def combined_train(
 
         if log and (epoch + 1) % 10 == 0:
             print(
-                f"Epoch {epoch + 1}/{epochs}, Train loss: {np.round(train_losses[-1], 3)}, Val loss: {np.round(validation_losses[-1], 3)})"
+                f"Epoch {epoch + 1}/{epochs}, Train loss: {np.round(train_losses[-1], 3)}, Train acc: {np.round(train_accuracies[-1], 3)}, Val loss: {np.round(validation_losses[-1], 3)}, Val acc: {np.round(validation_accuracies[-1], 3)}"
             )
             if image:
                 plot_feature_maps(model, image)
@@ -211,6 +211,50 @@ def test(model, test_loader, criterion, device):
             test_accuracy += accuracy(y_test, y_pred)
             all_labels.extend(torch.argmax(y_test, dim=1).cpu().numpy())
             all_preds.extend(torch.argmax(y_pred, dim=1).cpu().numpy())
+
+        test_loss /= len(test_loader)
+        test_accuracy /= len(test_loader)
+
+    return test_loss, test_accuracy, all_preds, all_labels
+
+
+def combined_test(model, test_loader, criterion, device, mode):
+    test_loss = 0
+    test_accuracy = 0
+    all_preds = []
+    all_labels = []
+
+    model.eval()
+
+    with torch.no_grad():
+        for (anchor, positive, negative), label in test_loader:
+            anchor, positive, negative, label = (
+                anchor.to(device),
+                positive.to(device),
+                negative.to(device),
+                label.to(device),
+            )
+            anchor_embedding, anchor_class_scores = model(anchor)
+            positive_embedding, _ = model(positive)
+            negative_embedding, _ = model(negative)
+            
+            if mode == "triplet":
+                loss = criterion(
+                    anchor_embedding, positive_embedding, negative_embedding
+                )
+            elif mode == "combined":
+                loss1 = criterion[0](anchor_class_scores, label)
+                loss2 = criterion[1](
+                    anchor_embedding, positive_embedding, negative_embedding
+                )
+                loss = loss1 + loss2
+            else:
+                loss = criterion(anchor_class_scores, label)
+
+            test_loss += loss.item() * anchor.shape[0]
+            test_accuracy += accuracy(label, anchor_class_scores)
+            all_labels.extend(torch.argmax(label, dim=1).cpu().numpy())
+            all_preds.extend(torch.argmax(anchor_class_scores, dim=1).cpu().numpy())
 
         test_loss /= len(test_loader)
         test_accuracy /= len(test_loader)
@@ -288,9 +332,9 @@ def plot_confusion_matrix(all_labels, all_preds, class_names, title):
     plt.show()
 
 
-def get_feature_maps(model, layer_name, x):
+def get_feature_maps(model, layer_name, x, device):
     features = []
-    x = x.unsqueeze(0)
+    x = x.unsqueeze(0).to(device)
 
     def hook_fn(module, input, output):
         features.append(output)
@@ -336,7 +380,7 @@ def visualize_feature_maps(feature_map, title, num_maps=8, max_row=5):
 def plot_images(images, labels, title, max_row=5):
     r = max(1, np.ceil(len(images) / max_row).astype(int))
     c = min(max_row, len(images))
-    fig, axes = plt.subplots(r, c, figsize=[r * 5, c * 5])
+    fig, axes = plt.subplots(r, c, figsize=[c * 2, r * 3])
 
     if r == 1 and c == 1:
         axes = np.array(axes).reshape(1, 1)
