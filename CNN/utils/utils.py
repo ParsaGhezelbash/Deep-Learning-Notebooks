@@ -81,7 +81,7 @@ def train(
 
         validation_accuracies.append(val_acc / len(val_loader))
 
-        if log and (epoch + 1) % 10 == 0:
+        if log and (epoch + 1) % 5 == 0:
             print(
                 f"Epoch {epoch + 1}/{epochs}, Train loss: {np.round(train_losses[-1], 3)}, Train acc: {np.round(train_accuracies[-1], 3)}, Val loss: {np.round(validation_losses[-1], 3)}, Val acc: {np.round(validation_accuracies[-1], 3)}"
             )
@@ -186,7 +186,7 @@ def combined_train(
         validation_losses.append(batch_loss / len(val_loader))
         validation_accuracies.append(val_acc / len(val_loader))
 
-        if log and (epoch + 1) % 10 == 0:
+        if log and (epoch + 1) % 5 == 0:
             print(
                 f"Epoch {epoch + 1}/{epochs}, Train loss: {np.round(train_losses[-1], 3)}, Train acc: {np.round(train_accuracies[-1], 3)}, Val loss: {np.round(validation_losses[-1], 3)}, Val acc: {np.round(validation_accuracies[-1], 3)}"
             )
