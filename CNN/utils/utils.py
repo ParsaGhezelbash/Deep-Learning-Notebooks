@@ -86,7 +86,7 @@ def train(
                 f"Epoch {epoch + 1}/{epochs}, Train loss: {np.round(train_losses[-1], 3)}, Train acc: {np.round(train_accuracies[-1], 3)}, Val loss: {np.round(validation_losses[-1], 3)}, Val acc: {np.round(validation_accuracies[-1], 3)}"
             )
             if image:
-                plot_feature_maps(model, image)
+                plot_feature_maps(model, image, device)
 
     return train_losses, train_accuracies, validation_losses, validation_accuracies
 
@@ -191,7 +191,7 @@ def combined_train(
                 f"Epoch {epoch + 1}/{epochs}, Train loss: {np.round(train_losses[-1], 3)}, Train acc: {np.round(train_accuracies[-1], 3)}, Val loss: {np.round(validation_losses[-1], 3)}, Val acc: {np.round(validation_accuracies[-1], 3)}"
             )
             if image:
-                plot_feature_maps(model, image)
+                plot_feature_maps(model, image, device)
 
     return train_losses, train_accuracies, validation_losses, validation_accuracies
 
@@ -363,7 +363,7 @@ def visualize_feature_maps(feature_map, title, num_maps=8, max_row=5):
 
     r = max(1, np.ceil(num_maps / max_row).astype(int))
     c = min(max_row, num_maps)
-    fig, axes = plt.subplots(r, c, figsize=[c * 2, r * 3])
+    fig, axes = plt.subplots(r, c, figsize=[c * 1, r * 2])
 
     if r == 1 and c == 1:
         axes = np.array(axes).reshape(1, 1)
@@ -427,3 +427,10 @@ def load_model(model, path):
     model.load_state_dict(torch.load(path, weights_only=True))
 
     print(f"model loaded from {path} successfully!")
+
+
+def get_num_parameters(model, mode='complete'):
+    if mode == 'complete':
+        return sum(p.numel() for p in model.parameters())
+    elif mode == 'learnable':
+        return sum(p.numel() for p in model.parameters() if p.requires_grad)
