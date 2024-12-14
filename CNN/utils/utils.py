@@ -85,7 +85,7 @@ def train(
             print(
                 f"Epoch {epoch + 1}/{epochs}, Train loss: {np.round(train_losses[-1], 3)}, Train acc: {np.round(train_accuracies[-1], 3)}, Val loss: {np.round(validation_losses[-1], 3)}, Val acc: {np.round(validation_accuracies[-1], 3)}"
             )
-            if image:
+            if image is not None:
                 plot_feature_maps(model, image, device)
 
     return train_losses, train_accuracies, validation_losses, validation_accuracies
@@ -190,7 +190,7 @@ def combined_train(
             print(
                 f"Epoch {epoch + 1}/{epochs}, Train loss: {np.round(train_losses[-1], 3)}, Train acc: {np.round(train_accuracies[-1], 3)}, Val loss: {np.round(validation_losses[-1], 3)}, Val acc: {np.round(validation_accuracies[-1], 3)}"
             )
-            if image:
+            if image is not None:
                 plot_feature_maps(model, image, device)
 
     return train_losses, train_accuracies, validation_losses, validation_accuracies
