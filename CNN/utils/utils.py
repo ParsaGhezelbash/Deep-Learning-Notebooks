@@ -1,3 +1,6 @@
+# Name = 'Parsa Ghezelbash'
+# SID = 401110437
+
 import numpy as np
 import matplotlib.pyplot as plt
 
